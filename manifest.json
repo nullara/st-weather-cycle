@@ -1,0 +1,13 @@
+{
+  "display_name": "Weather Cycle",
+  "loading_order": 10,
+  "js": "index.js",
+  "css": "style.css",
+  "author": "Null",
+  "version": "1.2.1",
+  "auto_update": false,
+  "minimum_client_version": "1.0.0",
+  "hooks": {
+    "activate": "onActivate"
+  }
+}
