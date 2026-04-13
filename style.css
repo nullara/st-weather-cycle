@@ -232,14 +232,6 @@
   }
 }
 
-#st-weather-cycle-settings {
-  margin-top: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  overflow: hidden;
-}
-
 #st-weather-cycle-settings summary {
   list-style: none;
 }
@@ -250,26 +242,17 @@
 
 .st-weather-cycle-settings-summary {
   cursor: pointer;
-  padding: 12px 14px;
+  padding: 10px 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   user-select: none;
-}
-
-.st-weather-cycle-settings-summary::after {
-  content: "▾";
-  font-size: 14px;
-  opacity: 0.8;
-  transition: transform 0.2s ease;
-}
-
-#st-weather-cycle-settings[open] .st-weather-cycle-settings-summary::after {
-  transform: rotate(180deg);
+  background: transparent;
+  border: none;
 }
 
 .st-weather-cycle-settings-content {
-  padding: 0 14px 14px;
+  padding: 0 0 12px 0;
 }
 
 .st-weather-cycle-settings-title {
@@ -285,9 +268,9 @@
 }
 
 .st-weather-cycle-settings-group {
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .st-weather-cycle-group-title {

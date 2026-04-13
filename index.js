@@ -1,3 +1,6 @@
+import { SlashCommandParser } from '../../../slash-commands/SlashCommandParser.js';
+import { SlashCommand } from '../../../slash-commands/SlashCommand.js';
+
 const EXT_ID = 'st-weather-cycle';
 const STORAGE_KEY = 'st-weather-cycle-settings';
 
@@ -53,6 +56,25 @@ function loadSettings() {
 
 function saveSettings() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+}
+
+function clamp(num, min, max) {
+  return Math.min(Math.max(num, min), max);
+}
+
+function isValidHexColor(value) {
+  return /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{3})$/.test(String(value).trim());
+}
+
+function getCurrentInfoText() {
+  return [
+    `Enabled: ${settings.enabled}`,
+    `Weather: ${settings.weather}`,
+    `Time: ${settings.time}`,
+    `Particle Count: ${settings.particleCount}`,
+    `Show Weather Button: ${settings.showWeatherButton}`,
+    `Show Status Badge: ${settings.showStatusBadge}`
+  ].join('\n');
 }
 
 function hexToRgba(hex, alpha = 1) {
@@ -318,6 +340,129 @@ function updateSetting(key, value) {
   applyVisuals();
 }
 
+function handleWcCommand(rawInput = '') {
+  const input = String(rawInput || '').trim();
+  const parts = input.length ? input.split(/\s+/) : [];
+  const sub = (parts[0] || '').toLowerCase();
+
+  const validWeather = ['clear', 'fog', 'rain', 'snow'];
+  const validTime = ['morning', 'day', 'evening', 'night'];
+
+  const weatherColorKeyMap = {
+    clear: 'clearColor',
+    fog: 'fogColor',
+    rain: 'rainColor',
+    snow: 'snowColor',
+  };
+
+  const weatherOpacityKeyMap = {
+    clear: 'clearOpacity',
+    fog: 'fogOpacity',
+    rain: 'rainOpacity',
+    snow: 'snowOpacity',
+  };
+
+  if (sub === 'on') {
+    updateSetting('enabled', true);
+    return 'Weather Cycle enabled.';
+  }
+
+  if (sub === 'off') {
+    updateSetting('enabled', false);
+    return 'Weather Cycle disabled.';
+  }
+
+  if (sub === 'toggle') {
+    updateSetting('enabled', !settings.enabled);
+    return `Weather Cycle ${settings.enabled ? 'enabled' : 'disabled'}.`;
+  }
+
+  if (sub === 'reset') {
+    settings = { ...DEFAULTS };
+    saveSettings();
+    syncSettingsUi();
+    syncFloatingUi();
+    applyVisuals();
+    return 'Weather Cycle reset to defaults.';
+  }
+
+  if (sub === 'weather') {
+    const value = (parts[1] || '').toLowerCase();
+    if (!validWeather.includes(value)) {
+      return `Invalid weather. Use one of: ${validWeather.join(', ')}`;
+    }
+    updateSetting('weather', value);
+    return `Weather set to ${value}.`;
+  }
+
+  if (sub === 'time') {
+    const value = (parts[1] || '').toLowerCase();
+    if (!validTime.includes(value)) {
+      return `Invalid time. Use one of: ${validTime.join(', ')}`;
+    }
+    updateSetting('time', value);
+    return `Time set to ${value}.`;
+  }
+
+  if (sub === 'particle') {
+    const rawValue = Number(parts[1]);
+    if (Number.isNaN(rawValue)) {
+      return 'Invalid particle count. Example: /wc particle 150';
+    }
+
+    const snapped = Math.round(clamp(rawValue, 0, 300) / 10) * 10;
+    updateSetting('particleCount', snapped);
+    return `Particle count set to ${snapped}.`;
+  }
+
+  if (sub === 'color') {
+    const weatherType = (parts[1] || '').toLowerCase();
+    const color = parts[2];
+
+    if (!validWeather.includes(weatherType)) {
+      return `Invalid weather type. Use one of: ${validWeather.join(', ')}`;
+    }
+
+    if (!isValidHexColor(color)) {
+      return 'Invalid color. Use a hex value like #465a78';
+    }
+
+    updateSetting(weatherColorKeyMap[weatherType], color);
+    return `${weatherType} color set to ${color}.`;
+  }
+
+  if (sub === 'opacity') {
+    const weatherType = (parts[1] || '').toLowerCase();
+    const rawValue = Number(parts[2]);
+
+    if (!validWeather.includes(weatherType)) {
+      return `Invalid weather type. Use one of: ${validWeather.join(', ')}`;
+    }
+
+    if (Number.isNaN(rawValue)) {
+      return 'Invalid opacity. Use a number from 0 to 1.';
+    }
+
+    const opacity = clamp(rawValue, 0, 1);
+    updateSetting(weatherOpacityKeyMap[weatherType], opacity);
+    return `${weatherType} opacity set to ${opacity}.`;
+  }
+
+  return [
+	'Unknown /wc command.',
+	'Available:',
+	'/wc on',
+	'/wc off',
+	'/wc toggle',
+	'/wc reset',
+	'/wc weather <clear|fog|rain|snow>',
+	'/wc time <morning|day|evening|night>',
+	'/wc particle <0-300>',
+	'/wc color <type> <hex>',
+	'/wc opacity <type> <0-1>',
+	].join('\n');
+}
+
 function makeRow(label, controlHtml) {
   return `
     <label class="${EXT_ID}-settings-row">
@@ -336,23 +481,21 @@ function ensureSettingsUi() {
     return;
   }
 
-  const block = document.createElement('details');
-  block.id = `${EXT_ID}-settings`;
-  block.className = `${EXT_ID}-settings-block`;
-  block.open = false;
+	const block = document.createElement('div');
+	block.id = `${EXT_ID}-settings`;
+	block.className = 'inline-drawer wide100p';
 
   block.innerHTML = `
-    <summary class="${EXT_ID}-settings-summary">
-      <span>
-        <span class="${EXT_ID}-settings-title">Weather Cycle</span>
-        <span class="${EXT_ID}-settings-subtitle">Background weather and day/night controls</span>
-      </span>
-    </summary>
+  <div class="inline-drawer-toggle inline-drawer-header">
+    <b>Weather Cycle</b>
+    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+  </div>
 
+  <div class="inline-drawer-content">
     <div class="${EXT_ID}-settings-content">
       ${makeRow('Enabled', `<input type="checkbox" id="${EXT_ID}-enabled">`)}
       ${makeRow('Show Weather Button', `<input type="checkbox" id="${EXT_ID}-showWeatherButton">`)}
-	  ${makeRow('Show Status Badge', `<input type="checkbox" id="${EXT_ID}-showStatusBadge">`)}
+      ${makeRow('Show Status Badge', `<input type="checkbox" id="${EXT_ID}-showStatusBadge">`)}
 
       ${makeRow(
         'Weather',
@@ -399,7 +542,8 @@ function ensureSettingsUi() {
         <button id="${EXT_ID}-reset" type="button">Reset Defaults</button>
       </div>
     </div>
-  `;
+  </div>
+`;
 
   panel.appendChild(block);
 
@@ -502,16 +646,72 @@ function syncSettingsUi() {
   set(`${EXT_ID}-snowColor`, settings.snowColor);
 }
 
+function registerSlashCommands() {
+  if (window.__stWeatherCycleSlashRegistered) return;
+  window.__stWeatherCycleSlashRegistered = true;
+
+  console.log('[st-weather-cycle] attempting to register /wc');
+
+  try {
+    SlashCommandParser.addCommandObject(
+      SlashCommand.fromProps({
+        name: 'wc',
+        callback: (_namedArgs, unnamedArgs) => {
+          return handleWcCommand(String(unnamedArgs || '').trim());
+        },
+        returns: 'weather cycle command result',
+		helpString: `
+		  <div><strong>Weather Cycle</strong></div>
+		  <div>Controls the Weather Cycle extension.</div>
+
+		  <div><strong>Commands:</strong></div>
+		  <ul>
+			<li><pre><code class="language-stscript">/wc on</code></pre></li>
+			<li><pre><code class="language-stscript">/wc off</code></pre></li>
+			<li><pre><code class="language-stscript">/wc toggle</code></pre></li>
+			<li><pre><code class="language-stscript">/wc reset</code></pre></li>
+			<li><pre><code class="language-stscript">/wc weather &lt;clear|rain|fog|snow&gt;</code></pre></li>
+			<li><pre><code class="language-stscript">/wc time &lt;morning|day|evening|night&gt;</code></pre></li>
+			<li><pre><code class="language-stscript">/wc particle &lt;0-300&gt;</code></pre></li>
+			<li><pre><code class="language-stscript">/wc color &lt;clear|rain|fog|snow&gt; &lt;#hex&gt;</code></pre></li>
+			<li><pre><code class="language-stscript">/wc opacity &lt;clear|rain|fog|snow&gt; &lt;0-1&gt;</code></pre></li>
+		  </ul>
+
+		  <div><strong>Examples:</strong></div>
+		  <ul>
+			<li><pre><code class="language-stscript">/wc weather rain</code></pre></li>
+			<li><pre><code class="language-stscript">/wc time night</code></pre></li>
+			<li><pre><code class="language-stscript">/wc particle 150</code></pre></li>
+			<li><pre><code class="language-stscript">/wc color rain #465a78</code></pre></li>
+			<li><pre><code class="language-stscript">/wc opacity fog 0.18</code></pre></li>
+		  </ul>
+		`,
+      })
+    );
+
+    console.log('[st-weather-cycle] /wc registered successfully');
+  } catch (err) {
+    console.error('[st-weather-cycle] failed to register /wc', err);
+  }
+}
+
 function init() {
   if (mounted) return;
   mounted = true;
+
   ensureVisualMount();
   ensureSettingsUi();
   bindFloatingUi();
+
+  registerSlashCommands();
+
   syncSettingsUi();
   syncFloatingUi();
   applyVisuals();
+
   console.log('[st-weather-cycle] initialized');
+  console.log('SlashCommandParser:', window.SlashCommandParser);
+  console.log('SlashCommand:', window.SlashCommand);
 }
 
 export function onActivate() {
