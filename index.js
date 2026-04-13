@@ -4,6 +4,7 @@ const STORAGE_KEY = 'st-weather-cycle-settings';
 const DEFAULTS = {
   enabled: true,
   showWeatherButton: true,
+  showStatusBadge: true,
 
   weather: 'clear',
   time: 'day',
@@ -261,6 +262,11 @@ function syncFloatingUi() {
     toggle.style.display = settings.showWeatherButton ? 'block' : 'none';
   }
 
+  const badge = document.getElementById(`${EXT_ID}-badge`);
+  if (badge) {
+    badge.style.display = settings.showStatusBadge ? 'block' : 'none';
+  }
+
   const panel = document.getElementById(`${EXT_ID}-panel`);
   if (panel && !settings.showWeatherButton) {
     panel.style.display = 'none';
@@ -277,12 +283,13 @@ function applyVisuals() {
   if (!overlay || !badge || !visuals) return;
 
   if (!settings.enabled) {
-    visuals.style.display = 'none';
-    badge.textContent = 'Weather: off';
-    clearParticles();
-    updateFog('clear');
-    syncFloatingUi();
-    return;
+	visuals.style.display = 'none';
+	badge.textContent = 'Weather: off';
+	badge.style.display = settings.showStatusBadge ? 'block' : 'none';
+	clearParticles();
+	updateFog('clear');
+	syncFloatingUi();
+	return;
   }
 
   visuals.style.display = 'block';
@@ -296,6 +303,7 @@ function applyVisuals() {
   `;
 
   badge.textContent = `Weather: ${settings.weather} | Time: ${settings.time}`;
+  badge.style.display = settings.showStatusBadge ? 'block' : 'none';
 
   updateFog(settings.weather);
   buildParticles(settings.weather, settings.particleCount);
@@ -344,6 +352,7 @@ function ensureSettingsUi() {
     <div class="${EXT_ID}-settings-content">
       ${makeRow('Enabled', `<input type="checkbox" id="${EXT_ID}-enabled">`)}
       ${makeRow('Show Weather Button', `<input type="checkbox" id="${EXT_ID}-showWeatherButton">`)}
+	  ${makeRow('Show Status Badge', `<input type="checkbox" id="${EXT_ID}-showStatusBadge">`)}
 
       ${makeRow(
         'Weather',
@@ -412,6 +421,7 @@ function bindInput(id, key, parser = v => v) {
 function bindSettingsUi() {
   bindInput(`${EXT_ID}-enabled`, 'enabled', v => Boolean(v));
   bindInput(`${EXT_ID}-showWeatherButton`, 'showWeatherButton', v => Boolean(v));
+  bindInput(`${EXT_ID}-showStatusBadge`, 'showStatusBadge', v => Boolean(v));
   bindInput(`${EXT_ID}-weather`, 'weather', v => String(v));
   bindInput(`${EXT_ID}-time`, 'time', v => String(v));
 
@@ -473,6 +483,7 @@ function syncSettingsUi() {
 
   set(`${EXT_ID}-enabled`, settings.enabled, true);
   set(`${EXT_ID}-showWeatherButton`, settings.showWeatherButton, true);
+  set(`${EXT_ID}-showStatusBadge`, settings.showStatusBadge, true);
   set(`${EXT_ID}-weather`, settings.weather);
   set(`${EXT_ID}-time`, settings.time);
 
