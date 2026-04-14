@@ -23,15 +23,16 @@ Adds weather effects and time-of-day overlays to SillyTavern backgrounds.
 
 ## Slash Commands
 
-The following slash commands are available. Start the commands with /wc.
-So for example /wc toggle.
+The following slash commands are available. Start the commands with `/wc`.
+So for example `/wc toggle`.
 
-/wc on        → Enable Weather Cycle
-/wc off       → Disable Weather Cycle
-/wc toggle    → Toggle on/off
-/wc reset     → Reset all settings to default
-/wc weather   → <clear|fog|rain|snow>
-/wc time      → <indoors|morning|day|evening|night>
-/wc particle  → <0-300>
-/wc color     → <indoors|morning|day|evening|night> <#hex>
-/wc opacity   → <indoors|morning|day|evening|night> <0.0-1.0>
+```text
+/wc on       -> Enable Weather Cycle
+/wc off      -> Disable Weather Cycle
+/wc toggle   -> Toggle on/off
+/wc reset    -> Reset all settings to default
+/wc weather  -> <clear|fog|rain|snow>
+/wc time     -> <indoors|morning|day|evening|night>
+/wc particle -> <0-300>
+/wc color    -> <indoors|morning|day|evening|night> <#hex>
+/wc opacity  -> <indoors|morning|day|evening|night> <0.0-1.0>
