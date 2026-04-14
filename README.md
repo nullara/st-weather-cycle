@@ -21,18 +21,35 @@ Adds weather effects and time-of-day overlays to SillyTavern backgrounds.
 5. Paste into the field.
 6. Click on either 'Install for all users' or Install just for me'.
 
+
 ## Slash Commands
 
-The following slash commands are available. Start the commands with `/wc`.
-So for example `/wc toggle`.
+All commands start with `/wc`.
 
-```text
-/wc on       -> Enable Weather Cycle
-/wc off      -> Disable Weather Cycle
-/wc toggle   -> Toggle on/off
-/wc reset    -> Reset all settings to default
-/wc weather  -> <clear|fog|rain|snow>
-/wc time     -> <indoors|morning|day|evening|night>
-/wc particle -> <0-300>
-/wc color    -> <indoors|morning|day|evening|night> <#hex>
-/wc opacity  -> <indoors|morning|day|evening|night> <0.0-1.0>
+- `/wc on` — Enable Weather Cycle  
+- `/wc off` — Disable Weather Cycle  
+- `/wc toggle` — Toggle on/off  
+- `/wc reset` — Reset all settings  
+
+- `/wc weather <clear|fog|rain|snow>` — Set the current Weather
+- `/wc time <indoors|morning|day|evening|night>` — Set the current Time
+- `/wc particle <0-300>` — Set the amount of particles for rain and snow
+
+- `/wc color <indoors|morning|day|evening|night> <#hex>` — Set the overlay color for the chosen time using a HEX color code
+- `/wc opacity <indoors|morning|day|evening|night> <0.0-1.0>` — Set the overlay opacity for the chosen time
+
+## Slash Command Examples
+
+All commands start with `/wc`.
+
+- `/wc on`
+- `/wc off`
+- `/wc toggle`
+- `/wc reset`
+
+- `/wc weather clear`
+- `/wc time indoors`
+- `/wc particle 300`
+
+- `/wc color morning #00FF22`
+- `/wc opacity day 0.6`
