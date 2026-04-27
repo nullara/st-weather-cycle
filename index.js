@@ -390,8 +390,8 @@ function initHeatWebGL(canvas) {
     vec2 uv = v_uv;
 
     float verticalFade =
-        smoothstep(0.08, 0.42, uv.y) *
-        (1.0 - smoothstep(0.92, 1.0, uv.y));
+		smoothstep(0.0, 0.12, uv.y) *
+		(1.0 - smoothstep(0.96, 1.0, uv.y));
 
     float line1 = sin((uv.y * 240.0) + (u_time * 12.0));
 float line2 = sin((uv.y * 420.0) + (u_time * 17.0) + sin(uv.x * 24.0));
