@@ -491,6 +491,17 @@ function renderHeatWebGL() {
     const canvas = document.getElementById(`${EXT_ID}-heat-canvas`);
     if (!canvas || !heatGl || !heatProgram || !heatImage) return;
 
+    const currentBgUrl = getBackgroundImageUrl();
+
+    if (currentBgUrl && currentBgUrl !== heatCurrentBgUrl) {
+        loadHeatBackgroundImage(currentBgUrl, () => {
+            heatStartTime = performance.now();
+        });
+
+        heatAnimationId = requestAnimationFrame(renderHeatWebGL);
+        return;
+    }
+
     const gl = heatGl;
 
     resizeHeatCanvas(canvas);
@@ -507,11 +518,11 @@ function renderHeatWebGL() {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, heatImage);
 
     const imageLocation = gl.getUniformLocation(heatProgram, 'u_image');
-	const timeLocation = gl.getUniformLocation(heatProgram, 'u_time');
-	const resolutionLocation = gl.getUniformLocation(heatProgram, 'u_resolution');
-	const imageResolutionLocation = gl.getUniformLocation(heatProgram, 'u_imageResolution');
-	const heatStrengthLocation = gl.getUniformLocation(heatProgram, 'u_heatStrength');
-	const heatBlurLocation = gl.getUniformLocation(heatProgram, 'u_heatBlur');
+    const timeLocation = gl.getUniformLocation(heatProgram, 'u_time');
+    const resolutionLocation = gl.getUniformLocation(heatProgram, 'u_resolution');
+    const imageResolutionLocation = gl.getUniformLocation(heatProgram, 'u_imageResolution');
+    const heatStrengthLocation = gl.getUniformLocation(heatProgram, 'u_heatStrength');
+    const heatBlurLocation = gl.getUniformLocation(heatProgram, 'u_heatBlur');
 
     const elapsed = (performance.now() - heatStartTime) / 1000;
 
@@ -519,8 +530,8 @@ function renderHeatWebGL() {
     gl.uniform1f(timeLocation, elapsed);
     gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
     gl.uniform2f(imageResolutionLocation, heatImage.naturalWidth || heatImage.width, heatImage.naturalHeight || heatImage.height);
-	gl.uniform1f(heatStrengthLocation, heatStrengthUiToShader(settings.heatHazeStrength ?? 1.2));
-	gl.uniform1f(heatBlurLocation, heatBlurUiToShader(settings.heatHazeBlurAmount ?? 3.5));
+    gl.uniform1f(heatStrengthLocation, heatStrengthUiToShader(settings.heatHazeStrength ?? 1.2));
+    gl.uniform1f(heatBlurLocation, heatBlurUiToShader(settings.heatHazeBlurAmount ?? 3.5));
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
@@ -558,6 +569,9 @@ function stopHeatHaze() {
         cancelAnimationFrame(heatAnimationId);
         heatAnimationId = null;
     }
+
+    heatImage = null;
+    heatCurrentBgUrl = '';
 }
 
 function updateHeatHaze(weatherVal) {
