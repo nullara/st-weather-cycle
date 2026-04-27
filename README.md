@@ -31,9 +31,11 @@ All commands start with `/wc`.
 - `/wc toggle` — Toggle on/off  
 - `/wc reset` — Reset all settings  
 
-- `/wc weather <clear|fog|rain|snow>` — Set the current Weather
+- `/wc weather <clear|fog|rain|snow|heat>` — Set the current Weather
 - `/wc time <indoors|morning|day|evening|night>` — Set the current Time
 - `/wc particle <0-300>` — Set the amount of particles for rain and snow
+- `/wc heatstrength <0-10>` — Set the strength of the heat ripple effect
+- `/wc heatblur <0-10>` — Set the strength of the heat blur effect
 
 - `/wc color <indoors|morning|day|evening|night> <#hex>` — Set the overlay color for the chosen time using a HEX color code
 - `/wc opacity <indoors|morning|day|evening|night> <0.0-1.0>` — Set the overlay opacity for the chosen time
@@ -50,6 +52,8 @@ All commands start with `/wc`.
 - `/wc weather clear`
 - `/wc time indoors`
 - `/wc particle 300`
+- `/wc heatstrength 5`
+- `/wc heatblur 2`
 
 - `/wc color morning #00FF22`
 - `/wc opacity day 0.6`
