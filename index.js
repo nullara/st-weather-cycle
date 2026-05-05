@@ -16,7 +16,26 @@ const DEFAULTS = {
     weather: 'clear',
     time: 'day',
 
-    particleCount: 200,
+    rainParticleCount: 200,
+	rainParticleSize: 2,
+	rainParticleColor: '#dcefff',
+	rainParticleAngle: 0,
+	rainParticleSpeed: 1,
+
+	snowParticleCount: 160,
+	snowParticleSize: 4,
+	snowParticleColor: '#ffffff',
+	snowParticleAngle: 0,
+	snowParticleSpeed: 1,
+	
+	lightningEnabled: false,
+	lightningFrequency: 8,
+	lightningOpacity: 0.55,
+	lightningColor: '#ffffff',
+	
+	fogOpacity: 1,
+	fogSpeed: 1,
+	fogDirection: 'left',
 
     indoorOpacity: 0.18,
     indoorColor: '#f2c58a',
@@ -32,9 +51,9 @@ const DEFAULTS = {
 
     nightOpacity: 0.32,
     nightColor: '#141e46',
-	
-	heatHazeStrength: 1.2,
-	heatHazeBlurAmount: 3.5,
+
+    heatHazeStrength: 2.5,
+    backgroundBlurAmount: 3.5,
 };
 
 let settings = loadSettings();
@@ -64,10 +83,10 @@ function clamp(num, min, max) {
 }
 
 function heatStrengthUiToShader(value) {
-    return 0.0003 + (clamp(Number(value), 0, 10) / 10) * (0.002 - 0.0003);
+    return (clamp(Number(value), 0, 10) / 10) * 0.002;
 }
 
-function heatBlurUiToShader(value) {
+function backgroundBlurUiToShader(value) {
     return (clamp(Number(value), 0, 10) / 10) * 0.004;
 }
 
@@ -135,6 +154,7 @@ function ensureVisualMount() {
     visuals.id = `${EXT_ID}-visuals`;
     visuals.innerHTML = `
     <div id="${EXT_ID}-overlay"></div>
+	<div id="${EXT_ID}-lightning"></div>
 
     <div id="${EXT_ID}-fog" class="${EXT_ID}-fogwrapper">
       <div id="${EXT_ID}-foglayer_01" class="${EXT_ID}-foglayer">
@@ -205,21 +225,16 @@ function ensureVisualMount() {
           <option value="night">Night</option>
         </select>
       </label>
-
-      <label class="${EXT_ID}-floating-row" id="${EXT_ID}-floating-particle-row">
-		  <span>Particles</span>
-		  <input type="range" id="${EXT_ID}-floating-particleCount" min="0" max="300" step="10">
+	  
+	  <label class="${EXT_ID}-floating-row">
+		  <span>Lightning</span>
+		  <input type="checkbox" id="${EXT_ID}-floating-lightningEnabled">
 		</label>
 
-		<label class="${EXT_ID}-floating-row" id="${EXT_ID}-floating-heat-strength-row">
-		  <span>Heat Strength</span>
-		  <input type="range" id="${EXT_ID}-floating-heatHazeStrength" min="0" max="10" step="0.1">
-		</label>
-
-		<label class="${EXT_ID}-floating-row" id="${EXT_ID}-floating-heat-blur-row">
-		  <span>Heat Blur</span>
-		  <input type="range" id="${EXT_ID}-floating-heatHazeBlurAmount" min="0" max="10" step="0.1">
-		</label>
+      <label class="${EXT_ID}-floating-row">
+        <span>Blur</span>
+        <input type="range" id="${EXT_ID}-floating-backgroundBlurAmount" min="0" max="10" step="0.1">
+      </label>
     `;
         document.body.appendChild(panel);
     }
@@ -232,13 +247,48 @@ function clearParticles() {
     if (particles) particles.innerHTML = '';
 }
 
-function buildParticles(weatherVal, particleCount) {
+function buildParticles(weatherVal) {
     const particles = document.getElementById(`${EXT_ID}-particles`);
     if (!particles) return;
 
     clearParticles();
 
     if (weatherVal !== 'rain' && weatherVal !== 'snow') return;
+
+    const isRain = weatherVal === 'rain';
+
+    const particleCount = isRain
+        ? Number(settings.rainParticleCount ?? 200)
+        : Number(settings.snowParticleCount ?? 160);
+
+    const particleSize = isRain
+        ? Number(settings.rainParticleSize ?? 2)
+        : Number(settings.snowParticleSize ?? 4);
+
+    const particleColor = isRain
+        ? String(settings.rainParticleColor ?? '#dcefff')
+        : String(settings.snowParticleColor ?? '#ffffff');
+
+    const particleAngle = isRain
+        ? Number(settings.rainParticleAngle ?? 0)
+        : Number(settings.snowParticleAngle ?? 0);
+		
+	const particleSpeed = isRain
+		? Number(settings.rainParticleSpeed ?? 1)
+		: Number(settings.snowParticleSpeed ?? 1);		
+
+    const radians = particleAngle * (Math.PI / 180);
+    const distance = isRain ? 140 : 130;
+
+    // 0 = down, 90 = right, 180 = up, 270 = left
+    const moveX = Math.sin(radians) * distance;
+    const moveY = Math.cos(radians) * distance;
+
+    const startXOffset = -moveX * 0.5;
+    const startYOffset = -moveY * 0.5;
+    const endXOffset = moveX * 0.5;
+    const endYOffset = moveY * 0.5;
+
     if (particleCount <= 0) return;
 
     const frag = document.createDocumentFragment();
@@ -246,18 +296,35 @@ function buildParticles(weatherVal, particleCount) {
     for (let i = 0; i < particleCount; i++) {
         const el = document.createElement('span');
         el.className = `${EXT_ID}-particle ${EXT_ID}-${weatherVal}-particle`;
+
+        // Important: particles are distributed across the whole overlay.
+        // The animation itself handles direction from the center.
         el.style.left = `${Math.random() * 100}%`;
+        el.style.top = `${Math.random() * 100}%`;
+
         el.style.animationDelay = `${Math.random() * -8}s`;
 
-        if (weatherVal === 'rain') {
+        el.style.setProperty('--particle-start-x', `${startXOffset}vw`);
+        el.style.setProperty('--particle-start-y', `${startYOffset}vh`);
+        el.style.setProperty('--particle-end-x', `${endXOffset}vw`);
+        el.style.setProperty('--particle-end-y', `${endYOffset}vh`);
+        el.style.setProperty('--particle-sway-x', `${endXOffset * 0.2}vw`);
+        el.style.setProperty('--particle-sway-y', `${endYOffset * 0.2}vh`);
+        const graphicAngle = isRain ? -particleAngle : 0;
+		el.style.setProperty('--particle-angle', `${graphicAngle}deg`);
+
+        if (isRain) {
+            el.style.width = `${particleSize}px`;
             el.style.height = `${12 + Math.random() * 22}px`;
-            el.style.animationDuration = `${0.55 + Math.random() * 0.55}s`;
+            el.style.background = `linear-gradient(to bottom, transparent, ${particleColor})`;
+            el.style.animationDuration = `${(0.55 + Math.random() * 0.55) / particleSpeed}s`;
             el.style.opacity = `${0.25 + Math.random() * 0.45}`;
         } else {
-            const size = 2 + Math.random() * 5;
+            const size = particleSize + Math.random() * particleSize;
             el.style.width = `${size}px`;
             el.style.height = `${size}px`;
-            el.style.animationDuration = `${4 + Math.random() * 5}s`;
+            el.style.background = particleColor;
+            el.style.animationDuration = `${(4 + Math.random() * 5) / particleSpeed}s`;
             el.style.opacity = `${0.35 + Math.random() * 0.6}`;
         }
 
@@ -267,10 +334,122 @@ function buildParticles(weatherVal, particleCount) {
     particles.appendChild(frag);
 }
 
+let lightningTimeoutId = null;
+let lightningFlashTimeoutId = null;
+let lastLightningAt = 0;
+
+function updateLightning() {
+    const lightning = document.getElementById(`${EXT_ID}-lightning`);
+    if (!lightning) return;
+
+    const active = settings.enabled && settings.lightningEnabled;
+
+    lightning.style.setProperty('--lightning-color', settings.lightningColor || '#ffffff');
+    lightning.style.setProperty('--lightning-opacity', settings.lightningOpacity ?? 0.55);
+
+    if (active) {
+        scheduleLightning();
+    } else {
+        stopLightning();
+    }
+}
+
+function scheduleLightning() {
+    if (lightningTimeoutId) return;
+
+    const baseSeconds = clamp(Number(settings.lightningFrequency ?? 8), 3, 20);
+    const randomOffset = baseSeconds * (0.5 + Math.random());
+    const delay = Math.max(3000, randomOffset * 1000);
+
+    lightningTimeoutId = setTimeout(() => {
+        lightningTimeoutId = null;
+        flashLightning();
+        scheduleLightning();
+    }, delay);
+}
+
+function flashLightning() {
+    const lightning = document.getElementById(`${EXT_ID}-lightning`);
+    if (!lightning) return;
+
+    const now = Date.now();
+
+    // Safety: prevents rapid storm/strobe behavior
+    if (now - lastLightningAt < 7000) return;
+    lastLightningAt = now;
+
+    const baseOpacity = clamp(Number(settings.lightningOpacity ?? 0.55), 0, 1);
+
+    // Random cluster: 1, 2, or 3 quick flashes
+    // Most are 1-2, rare 3.
+    const roll = Math.random();
+    const flashCount = roll < 0.45 ? 1 : roll < 0.88 ? 2 : 3;
+
+    let flashIndex = 0;
+
+    function singleFlash() {
+        const opacity = baseOpacity * (0.55 + Math.random() * 0.45);
+        const holdDuration = 35 + Math.random() * 95;
+        const fadeDuration = 45 + Math.random() * 90;
+
+        lightning.style.transition = `opacity ${holdDuration}ms ease-out`;
+        lightning.style.opacity = opacity;
+
+        lightningFlashTimeoutId = setTimeout(() => {
+            lightning.style.transition = `opacity ${fadeDuration}ms ease-out`;
+            lightning.style.opacity = 0;
+
+            flashIndex++;
+
+            if (flashIndex < flashCount) {
+                // This is the "1.2" / "123" quick clustered timing
+                const tinyGap = 45 + Math.random() * 155;
+                lightningFlashTimeoutId = setTimeout(singleFlash, tinyGap);
+            }
+        }, holdDuration);
+    }
+
+    singleFlash();
+}
+
+function stopLightning() {
+    const lightning = document.getElementById(`${EXT_ID}-lightning`);
+
+    if (lightningTimeoutId) {
+        clearTimeout(lightningTimeoutId);
+        lightningTimeoutId = null;
+    }
+
+    if (lightningFlashTimeoutId) {
+        clearTimeout(lightningFlashTimeoutId);
+        lightningFlashTimeoutId = null;
+    }
+
+    if (lightning) {
+        lightning.classList.remove(`${EXT_ID}-lightning-active`);
+    }
+}
+
 function updateFog(weatherVal) {
     const fog = document.getElementById(`${EXT_ID}-fog`);
     if (!fog) return;
-    fog.style.display = settings.enabled && weatherVal === 'fog' ? 'block' : 'none';
+
+    const active = settings.enabled && weatherVal === 'fog';
+    fog.style.display = active ? 'block' : 'none';
+
+    const fogSpeed = Math.max(0.1, Number(settings.fogSpeed ?? 1));
+    const direction = ['left', 'right'].includes(settings.fogDirection)
+        ? settings.fogDirection
+        : 'left';
+
+    fog.style.setProperty('--fog-opacity', settings.fogOpacity ?? 1);
+
+    fog.style.setProperty('--fog-layer-1-speed', `${15 / fogSpeed}s`);
+    fog.style.setProperty('--fog-layer-2-speed', `${13 / fogSpeed}s`);
+    fog.style.setProperty('--fog-layer-3-speed', `${18 / fogSpeed}s`);
+
+    fog.classList.remove(`${EXT_ID}-fog-left`, `${EXT_ID}-fog-right`);
+    fog.classList.add(`${EXT_ID}-fog-${direction}`);
 }
 
 let heatGl = null;
@@ -343,7 +522,7 @@ function initHeatWebGL(canvas) {
     });
 
     if (!gl) {
-        console.warn('[st-weather-cycle] WebGL not available for heat haze.');
+        console.warn('[st-weather-cycle] WebGL not available for heat haze/background blur.');
         return false;
     }
 
@@ -364,8 +543,8 @@ function initHeatWebGL(canvas) {
         uniform float u_time;
         uniform vec2 u_resolution;
         uniform vec2 u_imageResolution;
-		uniform float u_heatStrength;
-		uniform float u_heatBlur;
+        uniform float u_heatStrength;
+        uniform float u_backgroundBlur;
 
         varying vec2 v_uv;
 
@@ -386,33 +565,44 @@ function initHeatWebGL(canvas) {
             return newUv;
         }
 
-       void main() {
-    vec2 uv = v_uv;
+        void main() {
+            vec2 uv = v_uv;
 
-    float verticalFade =
-		smoothstep(0.0, 0.12, uv.y) *
-		(1.0 - smoothstep(0.96, 1.0, uv.y));
+            float verticalFade =
+                smoothstep(0.0, 0.12, uv.y) *
+                (1.0 - smoothstep(0.96, 1.0, uv.y));
 
-    float line1 = sin((uv.y * 240.0) + (u_time * 12.0));
-float line2 = sin((uv.y * 420.0) + (u_time * 17.0) + sin(uv.x * 24.0));
-float line3 = sin((uv.y * 680.0) + (u_time * 22.0));
+            float line1 = sin((uv.y * 240.0) + (u_time * 12.0));
+            float line2 = sin((uv.y * 420.0) + (u_time * 17.0) + sin(uv.x * 24.0));
+            float line3 = sin((uv.y * 680.0) + (u_time * 22.0));
 
-    float shimmer = line1 * 0.45 + line2 * 0.35 + line3 * 0.20;
+            float shimmer = line1 * 0.45 + line2 * 0.35 + line3 * 0.20;
 
-    float strength = u_heatStrength * verticalFade;
+            float strength = u_heatStrength * verticalFade;
 
-    uv.x += shimmer * strength;
+            uv.x += shimmer * strength;
 
-    vec2 textureUv = coverUv(uv, u_resolution, u_imageResolution);
+            vec2 textureUv = coverUv(uv, u_resolution, u_imageResolution);
 
-    vec2 blur = vec2(u_heatBlur * verticalFade, 0.0);
+            float blurAmount = u_backgroundBlur * verticalFade;
 
-    vec4 color = texture2D(u_image, textureUv) * 0.45;
-    color += texture2D(u_image, textureUv + blur) * 0.275;
-    color += texture2D(u_image, textureUv - blur) * 0.275;
+			vec4 color = texture2D(u_image, textureUv) * 0.36;
 
-    gl_FragColor = color;
-}
+			color += texture2D(u_image, textureUv + vec2( blurAmount, 0.0)) * 0.10;
+			color += texture2D(u_image, textureUv + vec2(-blurAmount, 0.0)) * 0.10;
+			color += texture2D(u_image, textureUv + vec2(0.0,  blurAmount)) * 0.10;
+			color += texture2D(u_image, textureUv + vec2(0.0, -blurAmount)) * 0.10;
+
+			color += texture2D(u_image, textureUv + vec2( blurAmount * 0.7,  blurAmount * 0.7)) * 0.06;
+			color += texture2D(u_image, textureUv + vec2(-blurAmount * 0.7,  blurAmount * 0.7)) * 0.06;
+			color += texture2D(u_image, textureUv + vec2( blurAmount * 0.7, -blurAmount * 0.7)) * 0.06;
+			color += texture2D(u_image, textureUv + vec2(-blurAmount * 0.7, -blurAmount * 0.7)) * 0.06;
+
+			color += texture2D(u_image, textureUv + vec2( blurAmount * 1.4, 0.0)) * 0.04;
+			color += texture2D(u_image, textureUv + vec2(-blurAmount * 1.4, 0.0)) * 0.04;
+
+            gl_FragColor = color;
+        }
     `;
 
     heatProgram = createProgram(gl, vertexSource, fragmentSource);
@@ -463,7 +653,7 @@ function resizeHeatCanvas(canvas) {
 
 function loadHeatBackgroundImage(url, onReady) {
     if (!url) {
-        console.warn('[st-weather-cycle] No background image found for heat haze.');
+        console.warn('[st-weather-cycle] No background image found for heat haze/background blur.');
         return;
     }
 
@@ -481,7 +671,7 @@ function loadHeatBackgroundImage(url, onReady) {
     };
 
     heatImage.onerror = () => {
-        console.warn('[st-weather-cycle] Could not load background image for heat haze:', url);
+        console.warn('[st-weather-cycle] Could not load background image for heat haze/background blur:', url);
     };
 
     heatImage.src = url;
@@ -522,23 +712,26 @@ function renderHeatWebGL() {
     const resolutionLocation = gl.getUniformLocation(heatProgram, 'u_resolution');
     const imageResolutionLocation = gl.getUniformLocation(heatProgram, 'u_imageResolution');
     const heatStrengthLocation = gl.getUniformLocation(heatProgram, 'u_heatStrength');
-    const heatBlurLocation = gl.getUniformLocation(heatProgram, 'u_heatBlur');
+    const backgroundBlurLocation = gl.getUniformLocation(heatProgram, 'u_backgroundBlur');
 
     const elapsed = (performance.now() - heatStartTime) / 1000;
+    const heatActive = settings.enabled && settings.weather === 'heat';
+    const heatStrength = heatActive ? heatStrengthUiToShader(settings.heatHazeStrength ?? 2.5) : 0;
+    const backgroundBlur = backgroundBlurUiToShader(settings.backgroundBlurAmount ?? 0);
 
     gl.uniform1i(imageLocation, 0);
     gl.uniform1f(timeLocation, elapsed);
     gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
     gl.uniform2f(imageResolutionLocation, heatImage.naturalWidth || heatImage.width, heatImage.naturalHeight || heatImage.height);
-    gl.uniform1f(heatStrengthLocation, heatStrengthUiToShader(settings.heatHazeStrength ?? 1.2));
-    gl.uniform1f(heatBlurLocation, heatBlurUiToShader(settings.heatHazeBlurAmount ?? 3.5));
+    gl.uniform1f(heatStrengthLocation, heatStrength);
+    gl.uniform1f(backgroundBlurLocation, backgroundBlur);
 
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
     heatAnimationId = requestAnimationFrame(renderHeatWebGL);
 }
 
-function startHeatHaze() {
+function startBackgroundProcessing() {
     const canvas = document.getElementById(`${EXT_ID}-heat-canvas`);
     if (!canvas) return;
 
@@ -559,7 +752,7 @@ function startHeatHaze() {
     });
 }
 
-function stopHeatHaze() {
+function stopBackgroundProcessing() {
     const canvas = document.getElementById(`${EXT_ID}-heat-canvas`);
     if (canvas) {
         canvas.style.display = 'none';
@@ -574,13 +767,14 @@ function stopHeatHaze() {
     heatCurrentBgUrl = '';
 }
 
-function updateHeatHaze(weatherVal) {
-    const active = settings.enabled && weatherVal === 'heat';
+function updateBackgroundProcessing(weatherVal) {
+    const heatActive = settings.enabled && weatherVal === 'heat';
+    const blurActive = settings.enabled && Number(settings.backgroundBlurAmount ?? 0) > 0;
 
-    if (active) {
-        startHeatHaze();
+    if (heatActive || blurActive) {
+        startBackgroundProcessing();
     } else {
-        stopHeatHaze();
+        stopBackgroundProcessing();
     }
 }
 
@@ -595,9 +789,8 @@ function syncFloatingUi() {
     setValue(`${EXT_ID}-floating-enabled`, settings.enabled, true);
     setValue(`${EXT_ID}-floating-weather`, settings.weather);
     setValue(`${EXT_ID}-floating-time`, settings.time);
-    setValue(`${EXT_ID}-floating-particleCount`, settings.particleCount);
-    setValue(`${EXT_ID}-floating-heatHazeStrength`, settings.heatHazeStrength);
-    setValue(`${EXT_ID}-floating-heatHazeBlurAmount`, settings.heatHazeBlurAmount);
+	setValue(`${EXT_ID}-floating-lightningEnabled`, settings.lightningEnabled, true);
+    setValue(`${EXT_ID}-floating-backgroundBlurAmount`, settings.backgroundBlurAmount);
 
     const toggle = document.getElementById(`${EXT_ID}-toggle`);
     if (toggle) {
@@ -613,22 +806,43 @@ function syncFloatingUi() {
     if (panel && !settings.showWeatherButton) {
         panel.style.display = 'none';
     }
+	
+	const rainParticleRow = document.getElementById(`${EXT_ID}-floating-rain-particle-row`);
+	const rainAngleRow = document.getElementById(`${EXT_ID}-floating-rain-angle-row`);
+	const snowParticleRow = document.getElementById(`${EXT_ID}-floating-snow-particle-row`);
+	const snowAngleRow = document.getElementById(`${EXT_ID}-floating-snow-angle-row`);
+	const rainSpeedRow = document.getElementById(`${EXT_ID}-floating-rain-speed-row`);
+	const snowSpeedRow = document.getElementById(`${EXT_ID}-floating-snow-speed-row`);
 
-    const particleRow = document.getElementById(`${EXT_ID}-floating-particle-row`);
-    if (particleRow) {
-        particleRow.style.display = ['rain', 'snow'].includes(settings.weather) ? 'grid' : 'none';
-    }
+	if (rainParticleRow) {
+		rainParticleRow.style.display = settings.weather === 'rain' ? 'grid' : 'none';
+	}
+
+	if (rainAngleRow) {
+		rainAngleRow.style.display = settings.weather === 'rain' ? 'grid' : 'none';
+	}
+
+	if (rainSpeedRow) {
+		rainSpeedRow.style.display = settings.weather === 'rain' ? 'grid' : 'none';
+	}
+	
+	if (snowParticleRow) {
+		snowParticleRow.style.display = settings.weather === 'snow' ? 'grid' : 'none';
+	}
+
+	if (snowAngleRow) {
+		snowAngleRow.style.display = settings.weather === 'snow' ? 'grid' : 'none';
+	}
+
+	if (snowSpeedRow) {
+		snowSpeedRow.style.display = settings.weather === 'snow' ? 'grid' : 'none';
+	}	
 
     const heatStrengthRow = document.getElementById(`${EXT_ID}-floating-heat-strength-row`);
-    const heatBlurRow = document.getElementById(`${EXT_ID}-floating-heat-blur-row`);
     const showHeatRows = settings.weather === 'heat';
 
     if (heatStrengthRow) {
         heatStrengthRow.style.display = showHeatRows ? 'grid' : 'none';
-    }
-
-    if (heatBlurRow) {
-        heatBlurRow.style.display = showHeatRows ? 'grid' : 'none';
     }
 }
 
@@ -645,9 +859,10 @@ function applyVisuals() {
         visuals.style.display = 'none';
         badge.textContent = 'Weather: off';
         badge.style.display = settings.showStatusBadge ? 'block' : 'none';
-		clearParticles();
+        clearParticles();
 		updateFog('clear');
-		updateHeatHaze('clear');
+		updateLightning();
+		updateBackgroundProcessing('clear');
 		syncFloatingUi();
 		return;
     }
@@ -663,9 +878,10 @@ function applyVisuals() {
     badge.textContent = `Weather: ${settings.weather} | Time: ${settings.time}`;
     badge.style.display = settings.showStatusBadge ? 'block' : 'none';
 
-	updateFog(settings.weather);
-	updateHeatHaze(settings.weather);
-	buildParticles(settings.weather, settings.particleCount);
+    updateFog(settings.weather);
+	updateLightning();
+	updateBackgroundProcessing(settings.weather);
+	buildParticles(settings.weather);
 	syncFloatingUi();
 }
 
@@ -684,21 +900,27 @@ function handleWcCommand(rawInput = '') {
 
     const validWeather = ['clear', 'fog', 'rain', 'snow', 'heat'];
     const validTime = ['indoors', 'morning', 'day', 'evening', 'night'];
+    const validFogDirections = ['left', 'right'];
 
-    const timeColorKeyMap = {
-        indoors: 'indoorColor',
-        morning: 'morningColor',
-        day: 'dayColor',
-        evening: 'eveningColor',
-        night: 'nightColor',
+    const setNumber = (key, rawValue, min, max, label) => {
+        const num = Number(rawValue);
+
+        if (Number.isNaN(num)) {
+            return `Invalid ${label}. Use a number from ${min} to ${max}.`;
+        }
+
+        const value = clamp(num, min, max);
+        updateSetting(key, value);
+        return `${label} set to ${value}.`;
     };
 
-    const timeOpacityKeyMap = {
-        indoors: 'indoorOpacity',
-        morning: 'morningOpacity',
-        day: 'dayOpacity',
-        evening: 'eveningOpacity',
-        night: 'nightOpacity',
+    const setHex = (key, color, label) => {
+        if (!isValidHexColor(color)) {
+            return `Invalid ${label}. Use a hex color like #ffffff.`;
+        }
+
+        updateSetting(key, color);
+        return `${label} set to ${color}.`;
     };
 
     if (sub === 'on') {
@@ -747,73 +969,176 @@ function handleWcCommand(rawInput = '') {
         return `Time set to ${value}.`;
     }
 
-    if (sub === 'particle') {
-        const rawValue = Number(parts[1]);
+    if (sub === 'showbutton') {
+        const value = (parts[1] || '').toLowerCase();
 
-        if (Number.isNaN(rawValue)) {
-            return 'Invalid particle count. Example: /wc particle 150';
+        if (value === 'on') {
+            updateSetting('showWeatherButton', true);
+            return 'Weather button shown.';
         }
 
-        const snapped = Math.round(clamp(rawValue, 0, 300) / 10) * 10;
-        updateSetting('particleCount', snapped);
-        return `Particle count set to ${snapped}.`;
+        if (value === 'off') {
+            updateSetting('showWeatherButton', false);
+            return 'Weather button hidden.';
+        }
+
+        return 'Invalid showbutton command. Use /wc showbutton <on|off>.';
+    }
+
+    if (sub === 'showbadge') {
+        const value = (parts[1] || '').toLowerCase();
+
+        if (value === 'on') {
+            updateSetting('showStatusBadge', true);
+            return 'Status badge shown.';
+        }
+
+        if (value === 'off') {
+            updateSetting('showStatusBadge', false);
+            return 'Status badge hidden.';
+        }
+
+        return 'Invalid showbadge command. Use /wc showbadge <on|off>.';
+    }
+
+    if (sub === 'raincount') {
+        return setNumber('rainParticleCount', parts[1], 0, 300, 'Rain count');
+    }
+
+    if (sub === 'rainsize') {
+        return setNumber('rainParticleSize', parts[1], 1, 8, 'Rain size');
+    }
+
+    if (sub === 'raincolor') {
+        return setHex('rainParticleColor', parts[1], 'Rain color');
+    }
+
+    if (sub === 'rainangle') {
+        return setNumber('rainParticleAngle', parts[1], 0, 360, 'Rain angle');
+    }
+
+    if (sub === 'rainspeed') {
+        return setNumber('rainParticleSpeed', parts[1], 0.25, 3, 'Rain speed');
+    }
+
+    if (sub === 'snowcount') {
+        return setNumber('snowParticleCount', parts[1], 0, 300, 'Snow count');
+    }
+
+    if (sub === 'snowsize') {
+        return setNumber('snowParticleSize', parts[1], 1, 12, 'Snow size');
+    }
+
+    if (sub === 'snowcolor') {
+        return setHex('snowParticleColor', parts[1], 'Snow color');
+    }
+
+    if (sub === 'snowangle') {
+        return setNumber('snowParticleAngle', parts[1], 0, 360, 'Snow angle');
+    }
+
+    if (sub === 'snowspeed') {
+        return setNumber('snowParticleSpeed', parts[1], 0.25, 3, 'Snow speed');
+    }
+
+    if (sub === 'fogopacity') {
+        return setNumber('fogOpacity', parts[1], 0, 1, 'Fog opacity');
+    }
+
+    if (sub === 'fogspeed') {
+        return setNumber('fogSpeed', parts[1], 0.25, 3, 'Fog speed');
+    }
+
+    if (sub === 'fogdirection') {
+        const value = (parts[1] || '').toLowerCase();
+
+        if (!validFogDirections.includes(value)) {
+            return `Invalid fog direction. Use one of: ${validFogDirections.join(', ')}`;
+        }
+
+        updateSetting('fogDirection', value);
+        return `Fog direction set to ${value}.`;
+    }
+
+    if (sub === 'lightning') {
+        const value = (parts[1] || '').toLowerCase();
+
+        if (value === 'on') {
+            updateSetting('lightningEnabled', true);
+            return 'Lightning enabled.';
+        }
+
+        if (value === 'off') {
+            updateSetting('lightningEnabled', false);
+            return 'Lightning disabled.';
+        }
+
+        if (value === 'toggle') {
+            updateSetting('lightningEnabled', !settings.lightningEnabled);
+            return `Lightning ${settings.lightningEnabled ? 'enabled' : 'disabled'}.`;
+        }
+
+        return 'Invalid lightning command. Use /wc lightning <on|off|toggle>.';
+    }
+
+    if (sub === 'lightningfreq' || sub === 'lightningfrequency') {
+        return setNumber('lightningFrequency', parts[1], 3, 20, 'Lightning frequency');
+    }
+
+    if (sub === 'lightningopacity') {
+        return setNumber('lightningOpacity', parts[1], 0, 1, 'Lightning opacity');
+    }
+
+    if (sub === 'lightningcolor') {
+        return setHex('lightningColor', parts[1], 'Lightning color');
     }
 
     if (sub === 'heatstrength' || sub === 'heat_strength') {
-        const rawValue = Number(parts[1]);
-
-        if (Number.isNaN(rawValue)) {
-            return 'Invalid heat strength. Example: /wc heatstrength 1.2';
-        }
-
-        const value = clamp(rawValue, 0, 10);
-        updateSetting('heatHazeStrength', value);
-        return `Heat strength set to ${value}.`;
+        return setNumber('heatHazeStrength', parts[1], 0, 10, 'Heat strength');
     }
 
-    if (sub === 'heatblur' || sub === 'heat_blur') {
-        const rawValue = Number(parts[1]);
-
-        if (Number.isNaN(rawValue)) {
-            return 'Invalid heat blur. Example: /wc heatblur 3.5';
-        }
-
-        const value = clamp(rawValue, 0, 10);
-        updateSetting('heatHazeBlurAmount', value);
-        return `Heat blur set to ${value}.`;
+    if (sub === 'blur' || sub === 'backgroundblur' || sub === 'background_blur') {
+        return setNumber('backgroundBlurAmount', parts[1], 0, 10, 'Blur');
     }
 
-    if (sub === 'color') {
-        const timeType = (parts[1] || '').toLowerCase();
-        const color = parts[2];
-
-        if (!validTime.includes(timeType)) {
-            return `Invalid time type. Use one of: ${validTime.join(', ')}`;
-        }
-
-        if (!isValidHexColor(color)) {
-            return 'Invalid color. Use a hex value like #465a78';
-        }
-
-        updateSetting(timeColorKeyMap[timeType], color);
-        return `${timeType} color set to ${color}.`;
+    if (sub === 'indooropacity') {
+        return setNumber('indoorOpacity', parts[1], 0, 1, 'Indoor opacity');
     }
 
-    if (sub === 'opacity') {
-        const timeType = (parts[1] || '').toLowerCase();
-        const rawValue = Number(parts[2]);
+    if (sub === 'indoorcolor') {
+        return setHex('indoorColor', parts[1], 'Indoor color');
+    }
 
-        if (!validTime.includes(timeType)) {
-            return `Invalid time type. Use one of: ${validTime.join(', ')}`;
-        }
+    if (sub === 'morningopacity') {
+        return setNumber('morningOpacity', parts[1], 0, 1, 'Morning opacity');
+    }
 
-        if (Number.isNaN(rawValue)) {
-            return 'Invalid opacity. Use a number from 0 to 1.';
-        }
+    if (sub === 'morningcolor') {
+        return setHex('morningColor', parts[1], 'Morning color');
+    }
 
-        const opacity = clamp(rawValue, 0, 1);
-        updateSetting(timeOpacityKeyMap[timeType], opacity);
-        return `${timeType} opacity set to ${opacity}.`;
+    if (sub === 'dayopacity') {
+        return setNumber('dayOpacity', parts[1], 0, 1, 'Day opacity');
+    }
+
+    if (sub === 'daycolor') {
+        return setHex('dayColor', parts[1], 'Day color');
+    }
+
+    if (sub === 'eveningopacity') {
+        return setNumber('eveningOpacity', parts[1], 0, 1, 'Evening opacity');
+    }
+
+    if (sub === 'eveningcolor') {
+        return setHex('eveningColor', parts[1], 'Evening color');
+    }
+
+    if (sub === 'nightopacity') {
+        return setNumber('nightOpacity', parts[1], 0, 1, 'Night opacity');
+    }
+
+    if (sub === 'nightcolor') {
+        return setHex('nightColor', parts[1], 'Night color');
     }
 
     return [
@@ -825,11 +1150,38 @@ function handleWcCommand(rawInput = '') {
         '/wc reset',
         '/wc weather <clear|fog|rain|snow|heat>',
         '/wc time <indoors|morning|day|evening|night>',
-        '/wc particle <0-300>',
+        '/wc showbutton <on|off>',
+        '/wc showbadge <on|off>',
+        '/wc raincount <0-300>',
+        '/wc rainsize <1-8>',
+        '/wc raincolor <#hex>',
+        '/wc rainangle <0-360>',
+        '/wc rainspeed <0.25-3>',
+        '/wc snowcount <0-300>',
+        '/wc snowsize <1-12>',
+        '/wc snowcolor <#hex>',
+        '/wc snowangle <0-360>',
+        '/wc snowspeed <0.25-3>',
+        '/wc fogopacity <0-1>',
+        '/wc fogspeed <0.25-3>',
+        '/wc fogdirection <left|right>',
+        '/wc lightning <on|off|toggle>',
+        '/wc lightningfreq <3-20>',
+        '/wc lightningopacity <0-1>',
+        '/wc lightningcolor <#hex>',
         '/wc heatstrength <0-10>',
-        '/wc heatblur <0-10>',
-        '/wc color <type> <hex>',
-        '/wc opacity <type> <0-1>',
+        '/wc blur <0-10>',
+        '/wc indooropacity <0-1>',
+        '/wc indoorcolor <#hex>',
+        '/wc morningopacity <0-1>',
+        '/wc morningcolor <#hex>',
+        '/wc dayopacity <0-1>',
+        '/wc daycolor <#hex>',
+        '/wc eveningopacity <0-1>',
+        '/wc eveningcolor <#hex>',
+        '/wc nightopacity <0-1>',
+        '/wc nightcolor <#hex>',
+        'Examples are available on the GitHub page.',
     ].join('\n');
 }
 
@@ -838,6 +1190,18 @@ function makeRow(label, controlHtml) {
     <label class="${EXT_ID}-settings-row">
       <span>${label}</span>
       ${controlHtml}
+    </label>
+  `;
+}
+
+function makeSliderRow(label, id, min, max, step = 1) {
+    return `
+    <label class="${EXT_ID}-settings-row ${EXT_ID}-slider-row">
+      <span>${label}</span>
+      <div class="${EXT_ID}-slider-with-number">
+        <input type="range" id="${id}" min="${min}" max="${max}" step="${step}">
+        <input type="number" id="${id}-number" min="${min}" max="${max}" step="${step}">
+      </div>
     </label>
   `;
 }
@@ -894,34 +1258,72 @@ function ensureSettingsUi() {
         )}
       </details>
 
-      <details class="${EXT_ID}-settings-group" open>
-        <summary class="${EXT_ID}-group-title">Particles</summary>
-        ${makeRow('Particle Count', `<input type="range" id="${EXT_ID}-particleCount" min="0" max="300" step="10">`)}
-      </details>
+       <details class="${EXT_ID}-settings-group" open>
+		  <summary class="${EXT_ID}-group-title">Rain</summary>
+		  ${makeSliderRow('Count', `${EXT_ID}-rainParticleCount`, 0, 300, 10)}
+		  ${makeSliderRow('Size', `${EXT_ID}-rainParticleSize`, 1, 8, 0.5)}
+		  ${makeRow('Color', `<input type="color" id="${EXT_ID}-rainParticleColor">`)}
+		  ${makeSliderRow('Angle', `${EXT_ID}-rainParticleAngle`, 0, 360, 1)}
+		  ${makeSliderRow('Speed', `${EXT_ID}-rainParticleSpeed`, 0.25, 3, 0.05)}
+		</details>
 
-      <details class="${EXT_ID}-settings-group" open>
-        <summary class="${EXT_ID}-group-title">Heat Haze</summary>
-        ${makeRow('Heat Strength', `<input type="range" id="${EXT_ID}-heatHazeStrength" min="0" max="10" step="0.1">`)}
-        ${makeRow('Heat Blur', `<input type="range" id="${EXT_ID}-heatHazeBlurAmount" min="0" max="10" step="0.1">`)}
-      </details>
+		<details class="${EXT_ID}-settings-group" open>
+		  <summary class="${EXT_ID}-group-title">Snow</summary>
+		  ${makeSliderRow('Count', `${EXT_ID}-snowParticleCount`, 0, 300, 10)}
+		  ${makeSliderRow('Size', `${EXT_ID}-snowParticleSize`, 1, 12, 0.5)}
+		  ${makeRow('Color', `<input type="color" id="${EXT_ID}-snowParticleColor">`)}
+		  ${makeSliderRow('Angle', `${EXT_ID}-snowParticleAngle`, 0, 360, 1)}
+		  ${makeSliderRow('Speed', `${EXT_ID}-snowParticleSpeed`, 0.25, 3, 0.05)}
+		</details>
+		
+		<details class="${EXT_ID}-settings-group" open>
+		  <summary class="${EXT_ID}-group-title">Fog</summary>
+		  ${makeSliderRow('Opacity', `${EXT_ID}-fogOpacity`, 0, 1, 0.01)}
+		  ${makeSliderRow('Speed', `${EXT_ID}-fogSpeed`, 0.25, 3, 0.05)}
+		  ${makeRow(
+			'Direction',
+			`<select id="${EXT_ID}-fogDirection">
+			  <option value="left">Left</option>
+			  <option value="right">Right</option>
+			</select>`
+		  )}
+		</details>
+
+		<details class="${EXT_ID}-settings-group" open>
+		  <summary class="${EXT_ID}-group-title">Lightning</summary>
+		  ${makeRow('Lightning Enabled', `<input type="checkbox" id="${EXT_ID}-lightningEnabled">`)}
+		  ${makeSliderRow('Lightning Frequency', `${EXT_ID}-lightningFrequency`, 3, 20, 1)}
+		  ${makeSliderRow('Lightning Opacity', `${EXT_ID}-lightningOpacity`, 0, 1, 0.01)}
+		  ${makeRow('Lightning Color', `<input type="color" id="${EXT_ID}-lightningColor">`)}
+		</details>
+
+		<details class="${EXT_ID}-settings-group" open>
+		  <summary class="${EXT_ID}-group-title">Heat Haze</summary>
+		  ${makeSliderRow('Heat Strength', `${EXT_ID}-heatHazeStrength`, 0, 10, 0.1)}
+		</details>
+
+		<details class="${EXT_ID}-settings-group" open>
+		  <summary class="${EXT_ID}-group-title">Effects</summary>
+		  ${makeSliderRow('Blur', `${EXT_ID}-backgroundBlurAmount`, 0, 10, 0.1)}
+		</details>
 
       <details class="${EXT_ID}-settings-group" open>
         <summary class="${EXT_ID}-group-title">Lighting Overlay</summary>
 
-        ${makeRow('Indoor Opacity', `<input type="range" id="${EXT_ID}-indoorOpacity" min="0" max="1" step="0.01">`)}
-        ${makeRow('Indoor Color', `<input type="color" id="${EXT_ID}-indoorColor">`)}
+        ${makeSliderRow('Indoor Opacity', `${EXT_ID}-indoorOpacity`, 0, 1, 0.01)}
+		${makeRow('Indoor Color', `<input type="color" id="${EXT_ID}-indoorColor">`)}
 
-        ${makeRow('Morning Opacity', `<input type="range" id="${EXT_ID}-morningOpacity" min="0" max="1" step="0.01">`)}
-        ${makeRow('Morning Color', `<input type="color" id="${EXT_ID}-morningColor">`)}
+		${makeSliderRow('Morning Opacity', `${EXT_ID}-morningOpacity`, 0, 1, 0.01)}
+		${makeRow('Morning Color', `<input type="color" id="${EXT_ID}-morningColor">`)}
 
-        ${makeRow('Day Opacity', `<input type="range" id="${EXT_ID}-dayOpacity" min="0" max="1" step="0.01">`)}
-        ${makeRow('Day Color', `<input type="color" id="${EXT_ID}-dayColor">`)}
+		${makeSliderRow('Day Opacity', `${EXT_ID}-dayOpacity`, 0, 1, 0.01)}
+		${makeRow('Day Color', `<input type="color" id="${EXT_ID}-dayColor">`)}
 
-        ${makeRow('Evening Opacity', `<input type="range" id="${EXT_ID}-eveningOpacity" min="0" max="1" step="0.01">`)}
-        ${makeRow('Evening Color', `<input type="color" id="${EXT_ID}-eveningColor">`)}
+		${makeSliderRow('Evening Opacity', `${EXT_ID}-eveningOpacity`, 0, 1, 0.01)}
+		${makeRow('Evening Color', `<input type="color" id="${EXT_ID}-eveningColor">`)}
 
-        ${makeRow('Night Opacity', `<input type="range" id="${EXT_ID}-nightOpacity" min="0" max="1" step="0.01">`)}
-        ${makeRow('Night Color', `<input type="color" id="${EXT_ID}-nightColor">`)}
+		${makeSliderRow('Night Opacity', `${EXT_ID}-nightOpacity`, 0, 1, 0.01)}
+		${makeRow('Night Color', `<input type="color" id="${EXT_ID}-nightColor">`)}
       </details>
 
       <div class="${EXT_ID}-settings-actions">
@@ -941,11 +1343,50 @@ function bindInput(id, key, parser = v => v) {
     const el = document.getElementById(id);
     if (!el) return;
 
+    const numberEl = document.getElementById(`${id}-number`);
+
+    const clampToInputRange = value => {
+        if (el.type !== 'range' && el.type !== 'number') return value;
+
+        const min = Number(el.min);
+        const max = Number(el.max);
+        const num = Number(value);
+
+        if (Number.isNaN(num)) return Number(el.value || min || 0);
+
+        if (!Number.isNaN(min) && num < min) return min;
+        if (!Number.isNaN(max) && num > max) return max;
+
+        return num;
+    };
+
+    const commitValue = raw => {
+        const clamped = clampToInputRange(raw);
+
+        el.value = clamped;
+        if (numberEl) numberEl.value = clamped;
+
+        updateSetting(key, parser(clamped));
+    };
+
     const eventName = el.type === 'range' || el.type === 'color' ? 'input' : 'change';
+
     el.addEventListener(eventName, () => {
         const raw = el.type === 'checkbox' ? el.checked : el.value;
-        updateSetting(key, parser(raw));
+        commitValue(raw);
     });
+
+    if (numberEl) {
+        numberEl.addEventListener('change', () => {
+            commitValue(numberEl.value);
+        });
+
+        numberEl.addEventListener('keydown', event => {
+            if (event.key === 'Enter') {
+                numberEl.blur();
+            }
+        });
+    }
 }
 
 function bindSettingsUi() {
@@ -955,10 +1396,29 @@ function bindSettingsUi() {
     bindInput(`${EXT_ID}-weather`, 'weather', v => String(v));
     bindInput(`${EXT_ID}-time`, 'time', v => String(v));
 
-    bindInput(`${EXT_ID}-particleCount`, 'particleCount', v => Number(v));
+    bindInput(`${EXT_ID}-rainParticleCount`, 'rainParticleCount', v => Number(v));
+	bindInput(`${EXT_ID}-rainParticleSize`, 'rainParticleSize', v => Number(v));
+	bindInput(`${EXT_ID}-rainParticleColor`, 'rainParticleColor', v => String(v));
+	bindInput(`${EXT_ID}-rainParticleAngle`, 'rainParticleAngle', v => Number(v));
+	bindInput(`${EXT_ID}-rainParticleSpeed`, 'rainParticleSpeed', v => Number(v));
+
+	bindInput(`${EXT_ID}-snowParticleCount`, 'snowParticleCount', v => Number(v));
+	bindInput(`${EXT_ID}-snowParticleSize`, 'snowParticleSize', v => Number(v));
+	bindInput(`${EXT_ID}-snowParticleColor`, 'snowParticleColor', v => String(v));
+	bindInput(`${EXT_ID}-snowParticleAngle`, 'snowParticleAngle', v => Number(v));
+	bindInput(`${EXT_ID}-snowParticleSpeed`, 'snowParticleSpeed', v => Number(v));
 	
-	bindInput(`${EXT_ID}-heatHazeStrength`, 'heatHazeStrength', v => Number(v));
-	bindInput(`${EXT_ID}-heatHazeBlurAmount`, 'heatHazeBlurAmount', v => Number(v));
+	bindInput(`${EXT_ID}-fogOpacity`, 'fogOpacity', v => Number(v));
+	bindInput(`${EXT_ID}-fogSpeed`, 'fogSpeed', v => Number(v));
+	bindInput(`${EXT_ID}-fogDirection`, 'fogDirection', v => String(v));
+	
+	bindInput(`${EXT_ID}-lightningEnabled`, 'lightningEnabled', v => Boolean(v));
+	bindInput(`${EXT_ID}-lightningFrequency`, 'lightningFrequency', v => Number(v));
+	bindInput(`${EXT_ID}-lightningOpacity`, 'lightningOpacity', v => Number(v));
+	bindInput(`${EXT_ID}-lightningColor`, 'lightningColor', v => String(v));
+	
+    bindInput(`${EXT_ID}-heatHazeStrength`, 'heatHazeStrength', v => Number(v));
+    bindInput(`${EXT_ID}-backgroundBlurAmount`, 'backgroundBlurAmount', v => Number(v));
 
     bindInput(`${EXT_ID}-indoorOpacity`, 'indoorOpacity', v => Number(v));
     bindInput(`${EXT_ID}-indoorColor`, 'indoorColor', v => String(v));
@@ -1000,9 +1460,8 @@ function bindFloatingUi() {
     bind(`${EXT_ID}-floating-enabled`, 'enabled', v => Boolean(v));
     bind(`${EXT_ID}-floating-weather`, 'weather', v => String(v));
     bind(`${EXT_ID}-floating-time`, 'time', v => String(v));
-    bind(`${EXT_ID}-floating-particleCount`, 'particleCount', v => Number(v));
-	bind(`${EXT_ID}-floating-heatHazeStrength`, 'heatHazeStrength', v => Number(v));
-	bind(`${EXT_ID}-floating-heatHazeBlurAmount`, 'heatHazeBlurAmount', v => Number(v));
+	bind(`${EXT_ID}-floating-lightningEnabled`, 'lightningEnabled', v => Boolean(v));
+    bind(`${EXT_ID}-floating-backgroundBlurAmount`, 'backgroundBlurAmount', v => Number(v));
 
     const toggle = document.getElementById(`${EXT_ID}-toggle`);
     const panel = document.getElementById(`${EXT_ID}-panel`);
@@ -1014,12 +1473,19 @@ function bindFloatingUi() {
 }
 
 function syncSettingsUi() {
-    const set = (id, value, isChecked = false) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        if (isChecked) el.checked = value;
-        else el.value = value;
-    };
+	const set = (id, value, isChecked = false) => {
+		const el = document.getElementById(id);
+		if (!el) return;
+
+		if (isChecked) {
+			el.checked = value;
+		} else {
+			el.value = value;
+
+			const numberEl = document.getElementById(`${id}-number`);
+			if (numberEl) numberEl.value = value;
+		}
+	};
 
     set(`${EXT_ID}-enabled`, settings.enabled, true);
     set(`${EXT_ID}-showWeatherButton`, settings.showWeatherButton, true);
@@ -1027,10 +1493,29 @@ function syncSettingsUi() {
     set(`${EXT_ID}-weather`, settings.weather);
     set(`${EXT_ID}-time`, settings.time);
 
-    set(`${EXT_ID}-particleCount`, settings.particleCount);
+    set(`${EXT_ID}-rainParticleCount`, settings.rainParticleCount);
+	set(`${EXT_ID}-rainParticleSize`, settings.rainParticleSize);
+	set(`${EXT_ID}-rainParticleColor`, settings.rainParticleColor);
+	set(`${EXT_ID}-rainParticleAngle`, settings.rainParticleAngle);
+	set(`${EXT_ID}-rainParticleSpeed`, settings.rainParticleSpeed);
+
+	set(`${EXT_ID}-snowParticleCount`, settings.snowParticleCount);
+	set(`${EXT_ID}-snowParticleSize`, settings.snowParticleSize);
+	set(`${EXT_ID}-snowParticleColor`, settings.snowParticleColor);
+	set(`${EXT_ID}-snowParticleAngle`, settings.snowParticleAngle);
+	set(`${EXT_ID}-snowParticleSpeed`, settings.snowParticleSpeed);
 	
-	set(`${EXT_ID}-heatHazeStrength`, settings.heatHazeStrength);
-	set(`${EXT_ID}-heatHazeBlurAmount`, settings.heatHazeBlurAmount);
+	set(`${EXT_ID}-fogOpacity`, settings.fogOpacity);
+	set(`${EXT_ID}-fogSpeed`, settings.fogSpeed);
+	set(`${EXT_ID}-fogDirection`, settings.fogDirection);
+	
+	set(`${EXT_ID}-lightningEnabled`, settings.lightningEnabled, true);
+	set(`${EXT_ID}-lightningFrequency`, settings.lightningFrequency);
+	set(`${EXT_ID}-lightningOpacity`, settings.lightningOpacity);
+	set(`${EXT_ID}-lightningColor`, settings.lightningColor);
+	
+    set(`${EXT_ID}-heatHazeStrength`, settings.heatHazeStrength);
+    set(`${EXT_ID}-backgroundBlurAmount`, settings.backgroundBlurAmount);
 
     set(`${EXT_ID}-indoorOpacity`, settings.indoorOpacity);
     set(`${EXT_ID}-indoorColor`, settings.indoorColor);
@@ -1046,7 +1531,6 @@ function syncSettingsUi() {
 
     set(`${EXT_ID}-nightOpacity`, settings.nightOpacity);
     set(`${EXT_ID}-nightColor`, settings.nightColor);
-
 }
 
 function registerSlashCommands() {
@@ -1063,36 +1547,71 @@ function registerSlashCommands() {
                     return handleWcCommand(String(unnamedArgs || '').trim());
                 },
                 returns: 'weather cycle command result',
-                helpString: `
-          <div><strong>Weather Cycle</strong></div>
-          <div>Controls the Weather Cycle extension.</div>
+			helpString: `
+			  <div><strong>Weather Cycle</strong></div>
+			  <div>Controls the Weather Cycle extension.</div>
 
-          <div><strong>Commands:</strong></div>
-          <ul>
-            <li><pre><code class="language-stscript">/wc on</code></pre></li>
-            <li><pre><code class="language-stscript">/wc off</code></pre></li>
-            <li><pre><code class="language-stscript">/wc toggle</code></pre></li>
-            <li><pre><code class="language-stscript">/wc reset</code></pre></li>
-            <li><pre><code class="language-stscript">/wc weather &lt;clear|rain|fog|snow|heat&gt;</code></pre></li>
-            <li><pre><code class="language-stscript">/wc particle &lt;0-300&gt;</code></pre></li>
-            <li><pre><code class="language-stscript">/wc heatstrength &lt;0-10&gt;</code></pre></li>
-            <li><pre><code class="language-stscript">/wc heatblur &lt;0-10&gt;</code></pre></li>
-            <li><pre><code class="language-stscript">/wc time &lt;indoors|morning|day|evening|night&gt;</code></pre></li>
-            <li><pre><code class="language-stscript">/wc color &lt;indoors|morning|day|evening|night&gt; &lt;#hex&gt;</code></pre></li>
-            <li><pre><code class="language-stscript">/wc opacity &lt;indoors|morning|day|evening|night&gt; &lt;0-1&gt;</code></pre></li>
-          </ul>
+			  <div><strong>Core:</strong></div>
+			  <ul>
+				<li><pre><code class="language-stscript">/wc on</code></pre></li>
+				<li><pre><code class="language-stscript">/wc off</code></pre></li>
+				<li><pre><code class="language-stscript">/wc toggle</code></pre></li>
+				<li><pre><code class="language-stscript">/wc reset</code></pre></li>
+				<li><pre><code class="language-stscript">/wc weather &lt;clear|fog|rain|snow|heat&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc time &lt;indoors|morning|day|evening|night&gt;</code></pre></li>
+			  </ul>
 
-          <div><strong>Examples:</strong></div>
-          <ul>
-            <li><pre><code class="language-stscript">/wc weather heat</code></pre></li>
-            <li><pre><code class="language-stscript">/wc heatstrength 1.2</code></pre></li>
-            <li><pre><code class="language-stscript">/wc heatblur 3.5</code></pre></li>
-            <li><pre><code class="language-stscript">/wc time indoors</code></pre></li>
-            <li><pre><code class="language-stscript">/wc particle 150</code></pre></li>
-            <li><pre><code class="language-stscript">/wc color night #465a78</code></pre></li>
-            <li><pre><code class="language-stscript">/wc opacity indoors 0.18</code></pre></li>
-          </ul>
-        `,
+			  <div><strong>Rain:</strong></div>
+			  <ul>
+				<li><pre><code class="language-stscript">/wc raincount &lt;0-300&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc rainsize &lt;1-8&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc raincolor &lt;#hex&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc rainangle &lt;0-360&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc rainspeed &lt;0.25-3&gt;</code></pre></li>
+			  </ul>
+
+			  <div><strong>Snow:</strong></div>
+			  <ul>
+				<li><pre><code class="language-stscript">/wc snowcount &lt;0-300&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc snowsize &lt;1-12&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc snowcolor &lt;#hex&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc snowangle &lt;0-360&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc snowspeed &lt;0.25-3&gt;</code></pre></li>
+			  </ul>
+
+			  <div><strong>Fog:</strong></div>
+			  <ul>
+				<li><pre><code class="language-stscript">/wc fogopacity &lt;0-1&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc fogspeed &lt;0.25-3&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc fogdirection &lt;left|right&gt;</code></pre></li>
+			  </ul>
+
+			  <div><strong>Lightning / Effects:</strong></div>
+			  <ul>
+				<li><pre><code class="language-stscript">/wc lightning &lt;on|off|toggle&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc lightningfreq &lt;3-20&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc lightningopacity &lt;0-1&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc lightningcolor &lt;#hex&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc heatstrength &lt;0-10&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc blur &lt;0-10&gt;</code></pre></li>
+			  </ul>
+
+			  <div><strong>Lighting Overlay:</strong></div>
+			  <ul>
+				<li><pre><code class="language-stscript">/wc indooropacity &lt;0-1&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc indoorcolor &lt;#hex&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc morningopacity &lt;0-1&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc morningcolor &lt;#hex&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc dayopacity &lt;0-1&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc daycolor &lt;#hex&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc eveningopacity &lt;0-1&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc eveningcolor &lt;#hex&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc nightopacity &lt;0-1&gt;</code></pre></li>
+				<li><pre><code class="language-stscript">/wc nightcolor &lt;#hex&gt;</code></pre></li>
+			  </ul>
+
+			  <div>Examples are available on the GitHub page.</div>
+			`,
             })
         );
 
